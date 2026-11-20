@@ -1,0 +1,17 @@
+.startPage { min-height:100dvh; background:radial-gradient(ellipse at 50% 25%,#e8f0e2 0,transparent 42%),#f7f8f6; color:#172522; }
+.startHeader { width:min(100% - 44px,1120px); height:68px; margin:auto; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #d8e1dc; color:#77857e; font-size:9px; font-weight:700; letter-spacing:.12em; }
+.brand { font:700 23px "Bricolage Grotesque Variable",sans-serif; letter-spacing:-.06em; color:#172522; }
+.brand span { color:#0c5549; }
+.startCard { width:min(100% - 36px,470px); min-height:340px; margin:clamp(48px,14vh,140px) auto 90px; border:1px solid #d8e1dc; border-radius:22px; background:#fff; padding:34px; box-shadow:0 20px 60px rgb(22 46 39 / .07); }
+.brandMark { display:grid; width:44px; height:44px; margin-bottom:27px; place-items:center; border-radius:14px; background:#0c5549; color:#e2efcf; font:700 13px "Bricolage Grotesque Variable",sans-serif; }
+.eyebrow { margin:0 0 10px; color:#0c5549; font-size:10px; font-weight:750; letter-spacing:.13em; text-transform:uppercase; }
+.startCard h1 { margin:0; font:650 40px/1 "Bricolage Grotesque Variable",sans-serif; letter-spacing:-.05em; }
+.startCard p:not(.eyebrow) { margin:14px 0 22px; color:#5d6c65; font-size:14px; line-height:1.6; }
+.loadingLine { display:flex; align-items:center; gap:10px; color:#718079; font-size:12px; }
+.loadingLine::before { content:""; width:16px; height:16px; border:2px solid #dce6de; border-top-color:#0c5549; border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.primaryButton { min-height:46px; border:0; border-radius:99px; background:#0c5549; padding:0 18px; color:#fff; font:650 13px inherit; cursor:pointer; }
+.backLink { display:block; margin-top:15px; color:#0c5549; font-size:12px; font-weight:650; }
+.startPage :focus-visible { outline:3px solid #91b856; outline-offset:3px; }
+@media(max-width:520px) { .startHeader { width:calc(100% - 32px); height:62px; }.brand { font-size:21px; }.startCard { min-height:320px; margin-top:11vh; padding:26px 23px; border-radius:18px; }.startCard h1 { font-size:36px; } }
+@media(prefers-reduced-motion:reduce) { .loadingLine::before { animation:none; } }

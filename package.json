@@ -1,0 +1,46 @@
+{
+  "name": "citiprojeto",
+  "version": "1.0.0",
+  "description": "Landing, demo e painel da experiência Pátio Voz",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "verify:db": "node --conditions=react-server --import=tsx scripts/verify-db.ts",
+    "verify:seller": "node --conditions=react-server --import=tsx scripts/verify-seller.ts",
+    "verify:voice": "node --conditions=react-server --import=tsx scripts/verify-voice.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.79.0",
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@supabase/supabase-js": "^2.119.0",
+    "next": "^15.5.29",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.29",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "postcss": "^8.5.23"
+  }
+}
