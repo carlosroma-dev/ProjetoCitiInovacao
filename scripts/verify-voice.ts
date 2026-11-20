@@ -503,8 +503,9 @@ async function main() {
 
     const stockChat = await createConversation(roundId);
     assert(stockChat);
-    const sportage = await addCatalogCar(roundId, { name: "Kia Sportage", model: "EX", priceCents: 11_490_000, status: "available", imageUrls: ["https://catalog.example.test/sportage.webp"] });
+    const sportage = await addCatalogCar(roundId, { name: "Kia Sportage", model: "EX 2.0 Automática", priceCents: 11_490_000, status: "available", imageUrls: ["https://catalog.example.test/sportage.webp"] });
     assert(sportage);
+    await pool.query("update patio_voz.cars set year = $1, color = $2 where id = $3", [2020, "Cinza", sportage.id]);
     await addCatalogCar(roundId, { name: "Chevrolet Tracker", model: "LTZ", priceCents: 12_490_000, status: "available", imageUrls: [] });
     await addCatalogCar(roundId, { name: "Tucson vendida", model: "GLS", priceCents: 8_490_000, status: "sold", imageUrls: [] });
     const stockIntent = { ...photoIntent, car_query: null, ask_photo: false, asks_question: true };
@@ -536,10 +537,21 @@ async function main() {
     const reactionChat = await createConversation(roundId);
     assert(reactionChat);
     const reactTurn = (text: string) => handleTurn({ roundId, conversationId: reactionChat.id, turnId: sampledTurn(false), text });
-    intentResponses.push({ ...stockIntent, car_query: "Sportage", car_inquiry: true });
-    const sportageInquiry = await reactTurn("Vocês têm Sportage disponível?");
+    intentResponses.push({ ...stockIntent, car_query: "Sportage", car_inquiry: true, car_details: ["other"] });
+    const sportageInquiry = await reactTurn("voces tem sportage disponivel? queria mais informacoes");
     assert.match(sportageInquiry.message, /Sportage.*114\.900/);
+    assert.match(sportageInquiry.message, /2020.*EX 2\.0 Automática.*cinza/);
+    assert.doesNotMatch(sportageInquiry.message, /detalhe.*confirmar|não consta/i);
     assert.equal(sportageInquiry.photo?.id, sportage.id);
+    intentResponses.push({ ...stockIntent, car_inquiry: true, car_details: ["overview"] });
+    const moreSportage = await reactTurn("Me fala mais dele");
+    assert.match(moreSportage.message, /qual|algum detalhe/i);
+    assert.doesNotMatch(moreSportage.message, /114\.900|2020|não consta/i);
+    assert.equal(moreSportage.photo, null);
+    intentResponses.push({ ...stockIntent, car_inquiry: true, car_details: ["other"] });
+    const mileage = await reactTurn("Quantos km ele tem?");
+    assert.match(mileage.message, /equipe.*confirmar/);
+    assert.doesNotMatch(mileage.message, /\d/);
     const beforeReaction = processingCalls;
     const beforeReactionWriting = replyCalls;
     const reaction = await reactTurn("poxa gostei do carro");

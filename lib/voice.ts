@@ -18,7 +18,8 @@ const MIME_EXTENSIONS: Record<string, string> = {
 const timeout = (ms: number) => AbortSignal.timeout(ms);
 
 const socialIntents = ["greeting", "wellbeing", "thanks", "acknowledgement", "goodbye", "car_reaction"] as const;
-const carDetails = ["price", "year", "color", "model", "other"] as const;
+const carDetails = ["price", "year", "color", "model", "other", "overview"] as const;
+type SpecificCarDetail = Exclude<typeof carDetails[number], "overview">;
 const visitKinds = ["browse", "schedule", "availability", "choose", "slots"] as const;
 const stockKinds = ["all", "suv", "hatch", "sedan", "picape"] as const;
 type StockKind = typeof stockKinds[number];
@@ -179,11 +180,11 @@ Preencha car_query com o nome do catálogo quando o cliente identificar um carro
 
 Use stock_query=all quando o cliente perguntar quais carros vocês têm, pedir opções ou pedir para conhecer o estoque. Use suv, hatch, sedan ou picape quando ele procurar uma categoria, por exemplo “queria um SUV”. Nesses pedidos use car_query=null. Deixe stock_query=null para um modelo específico (“tem o SUV Tracker?”), uma categoria citada só na troca ou opções de financiamento. “Quais vocês têm?” se refere a horários quando a conversa está combinando uma visita e a carros no contexto de estoque. Use visit_kind=slots e visit_request=true quando a pessoa pedir uma lista de horários livres, por exemplo “quais horários vocês têm?” ou “tem algum horário livre amanhã?”. Um pedido de lista de vagas nunca confirma uma reserva.
 
-Marque car_inquiry para interesse concreto em um carro, inclusive “vocês têm Kwid?”, preço, detalhes ou “tô procurando um Kwid”. Em car_details, indique price, year, color e model quando perguntados nesta fala. Use other para dados fora do catálogo, como quilometragem ou condições de financiamento, e uma lista vazia para pergunta de disponibilidade ou interesse geral. Marque ask_photo para pedido de fotos. Não marque interesse em carro por mera saudação, agradecimento ou menção de um carro oferecido na troca. Em social sinalize greeting para cumprimento, wellbeing para pergunta de como vai, thanks para agradecimento, acknowledgement para um ok sem outra intenção e goodbye para despedida. Preserve os demais pedidos quando acompanhados de saudação.
+Marque car_inquiry para interesse concreto em um carro, inclusive “vocês têm Kwid?”, preço, detalhes ou “tô procurando um Kwid”. Em car_details, indique price, year, color e model quando perguntados nesta fala. Use other apenas quando houver uma pergunta específica sobre um dado fora da ficha, como quilometragem ou financiamento. Use uma lista vazia quando a pessoa perguntar só sobre disponibilidade. Marque ask_photo para pedido de fotos. Não marque interesse em carro por mera saudação, agradecimento ou menção de um carro oferecido na troca. Em social sinalize greeting para cumprimento, wellbeing para pergunta de como vai, thanks para agradecimento, acknowledgement para um ok sem outra intenção e goodbye para despedida. Preserve os demais pedidos quando acompanhados de saudação.
 
 Quando apenas elogia ou reage positivamente ao focusedCar já apresentado (por exemplo “poxa gostei do carro”, “esse Sportage me ganhou”, “bonito demais esse aí”), use social=car_reaction, car_query=null, car_inquiry=false, car_details=[], asks_question=false, visit_request=false e answer=null. Se mencionar outro modelo ou também pedir informação, fotos, horário ou visita, classifique o pedido real. “Gostei dele, quanto é mesmo?” pergunta pelo preço. “Curti, dá pra passar sábado?” é sobre visita.
 
-Com um focusedCar, “me fala um pouco mais sobre ele” pede detalhes do carro em foco. Use car_inquiry=true e car_query=null. Em car_details, prefira um fato novo que conste na ficha, nesta ordem: year, model, color. Confira recentTurns. Se “Zen 1.0” já apareceu como parte de “Renault Kwid Zen 1.0”, essa versão já foi informada. Inclua o preço já informado apenas se a pessoa voltar a pedir o preço. Use other quando não houver mais nenhum dado de catálogo para acrescentar.
+Use car_details=["overview"] para pedidos gerais como “vocês têm Sportage disponível? Queria mais informações” e “me fala um pouco mais sobre ele”. Use car_inquiry=true. Defina car_query="Sportage" no primeiro caso e car_query=null no segundo, quando houver um carro em foco. Use overview mesmo se parte da ficha já tiver sido apresentada. Se a pessoa pedir também um detalhe específico, acrescente a chave desse detalhe a overview. “Me fala mais e me diz a quilometragem” usa ["overview","other"].
 
 Marque wants_audio para um pedido explícito de resposta falada nesta mensagem, como “me fala em áudio”, “pode mandar um áudio?” ou “me responde por voz”. “Me fala mais” por si só não pede áudio. Menções a áudio sem pedir esse formato, pedidos negados e preferência por texto não contam. Se houver correção do formato, respeite o último pedido explícito. Preserve as intenções de conteúdo junto do formato. “Qual o preço? Me responde em áudio” marca wants_audio e asks_question. “Pode mandar em áudio?”, sozinho, marca wants_audio sem asks_question. Use asks_question para uma pergunta sobre um assunto, inclusive se implícita.
 
@@ -398,9 +399,9 @@ function isImplicitCarPhoto(query: string, transcript: string): boolean {
   return vague.test(searchText(query)) && !changedSubject.test(searchText(transcript));
 }
 
-function carFacts(car: Car, details: Intent["car_details"]): string {
+function carFacts(car: Car, details: SpecificCarDetail[]): string {
   if (details.length === 0) return `Temos sim! O ${car.name} tá por ${money(car.priceCents)}.`;
-  const facts: Record<(typeof carDetails)[number], string | null> = {
+  const facts: Record<SpecificCarDetail, string | null> = {
     price: `O ${car.name} custa ${money(car.priceCents)}.`,
     year: car.year ? `Ele é de ${car.year}.` : null,
     color: car.color ? `Na ficha, a cor é ${car.color.toLocaleLowerCase("pt-BR")}.` : null,
@@ -408,15 +409,15 @@ function carFacts(car: Car, details: Intent["car_details"]): string {
     other: null,
   };
   const requested = [...new Set(details)].map((detail) => facts[detail]);
-  return [...requested.filter(Boolean), requested.includes(null) ? "Esse detalhe não consta no nosso catálogo." : ""].filter(Boolean).join(" ");
+  return [...requested.filter(Boolean), requested.includes(null) ? "Esse detalhe a equipe da loja pode confirmar pra você." : ""].filter(Boolean).join(" ");
 }
 
-function carSpeech(car: Car, details: Intent["car_details"]): string {
+function carSpeech(car: Car, details: SpecificCarDetail[]): string {
   if (!details.length) return "Tem esse carro no pátio, sim. Se quiser saber alguma coisa dele ou ver de perto, me fala.";
   const whole = Math.floor(car.priceCents / 100);
   const cents = car.priceCents % 100;
   const price = `${whole.toLocaleString("pt-BR")} reais${cents ? ` e ${cents} centavos` : ""}`;
-  const facts: Record<(typeof carDetails)[number], string | null> = {
+  const facts: Record<SpecificCarDetail, string | null> = {
     price: `Esse aí tá saindo por ${price}.`,
     year: car.year ? `Na ficha aqui, o ano dele é ${car.year}.` : null,
     color: car.color ? `A cor que tá cadastrada aqui é ${car.color.toLocaleLowerCase("pt-BR")}.` : null,
@@ -425,6 +426,32 @@ function carSpeech(car: Car, details: Intent["car_details"]): string {
   };
   const known = [...new Set(details)].map((detail) => facts[detail]);
   return [...known.filter(Boolean), known.includes(null) ? "Sobre esse detalhe, vale conferir com alguém da loja." : ""].filter(Boolean).join(" ");
+}
+
+const overviewRequest = /\b(?:(?:queria|quero|gostaria de) saber mais|(?:fala|conta|diz)(?: um pouco)? mais|mais (?:informacoes|infos|detalhes))(?: (?:sobre (?:ele|ela|o carro|esse carro)|dele|dela|do carro|desse carro))?(?: (?:por favor|em audio|em texto))*$/;
+const factList = new Intl.ListFormat("pt-BR", { style: "long", type: "conjunction" });
+
+function carOverview(car: Car, previousReplies: string[], requested: SpecificCarDetail[]) {
+  const history = ` ${searchText(previousReplies.join(" "))} `;
+  const seen = (value: string) => history.includes(` ${searchText(value)} `);
+  const show = (detail: SpecificCarDetail, value: string) => requested.includes(detail) || !seen(value);
+  const price = money(car.priceCents);
+  const specs = [
+    car.year && show("year", String(car.year)) && `de ${car.year}`,
+    car.model && show("model", car.model) && (!` ${searchText(car.name)} `.includes(` ${searchText(car.model)} `) || requested.includes("model")) && `da versão ${car.model}`,
+    car.color && show("color", car.color) && car.color.toLocaleLowerCase("pt-BR"),
+  ].filter((spec): spec is string => Boolean(spec));
+  const message = [
+    show("price", price) && `O ${car.name} tá disponível por ${price}.`,
+    specs.length ? `Ele é ${factList.format(specs)}.` : null,
+  ].filter(Boolean).join(" ");
+  const unknown = requested.filter((detail) => detail === "other" || detail === "year" && !car.year
+    || detail === "model" && !car.model || detail === "color" && !car.color);
+  return {
+    message: [message, unknown.length ? carFacts(car, unknown) : ""].filter(Boolean).join(" ")
+      || "Já te passei a ficha que tenho aqui. Tem algum detalhe que você quer confirmar com a equipe?",
+    speechText: unknown.length ? carSpeech(car, unknown) : "Se tiver algum ponto em especial que pesa na tua escolha, me fala que eu vejo contigo.",
+  };
 }
 
 function speechNote(speechText: string | undefined, prepare = false): Pick<TurnReply, "speechText" | "wantsAudio"> {
@@ -825,6 +852,9 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
     visitPreference: { ...visitPreference(context), period: visitPeriod(context) },
   }, initialSnapshot.cars);
   const words = searchText(transcript);
+  const overviewWords = overviewRequest.exec(words);
+  const interpretedOverview = intent.car_details.includes("overview");
+  const wantsOverview = interpretedOverview || Boolean(overviewWords);
   const dateFollowup = context.waitingForSlotDate === true && !intent.car_query && !stockOptionsRequest(words, intent, false)
     ? readVisitPreference(transcript, today, { allowSingleHour: false, period: visitPeriod(context), date: null })
     : null;
@@ -836,7 +866,7 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
     const reply: TurnReply = { turnId: input.turnId, transcript, inputKind, ...spoken, ...await composeReply(key, incoming, REPAIR_MESSAGE), visit: null, photo: null };
     return saveConversationTurn(input.roundId, input.conversationId, input.turnId, context, reply);
   }
-  if (intent.wants_audio && !asksSlots && !stockOptionsRequest(words, intent, false) && !intent.asks_question && !intent.car_inquiry && !intent.ask_photo
+  if (intent.wants_audio && !wantsOverview && !asksSlots && !stockOptionsRequest(words, intent, false) && !intent.asks_question && !intent.car_inquiry && !intent.ask_photo
     && intent.car_query === null && intent.budget_cents === null && intent.trade_in === null
     && !intent.visit_request && !intent.visit_kind && !intent.human_request && !intent.period && !intent.chosen_time
     && intent.social !== "wellbeing" && intent.social !== "goodbye") {
@@ -884,7 +914,8 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
     || followingVisit && visitTurn.capture);
   const reactingCar = intent.social === "car_reaction" && car?.id === priorCarId
     && !intent.asks_question && !intent.ask_photo && intent.car_details.length === 0 ? car : null;
-  const carInquiry = !reactingCar && (intent.car_inquiry || (matched.length === 1 && intent.asks_question && !selectingVisit && !intent.ask_photo));
+  const carInquiry = !reactingCar && (intent.car_inquiry || Boolean(car && wantsOverview)
+    || (matched.length === 1 && intent.asks_question && !selectingVisit && !intent.ask_photo));
   const wantsPhoto = intent.ask_photo || carInquiry;
   const confirmedTurnId = typeof context.confirmedVisitTurnId === "string" ? context.confirmedVisitTurnId : null;
   const confirmedBooking = (directHuman || followingVisit || selectingVisit) && confirmedTurnId
@@ -1012,8 +1043,17 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
       message = overBudgetMessage(car, car.priceCents, budget, snapshot.cars);
       speechText = "Esse aí passa do valor que tu tá pensando. Se quiser, eu te ajudo a olhar o que cabe nele.";
     } else {
-      message = carFacts(car, intent.car_details);
-      speechText = carSpeech(car, intent.car_details);
+      const overviewPrefix = overviewWords ? words.slice(0, overviewWords.index).trim() : null;
+      const generalWording = !interpretedOverview && overviewPrefix !== null
+        && /^(?:|(?:eu )?(?:queria|quero|gostaria de|me)|.*\bdisponivel(?: (?:queria|quero|gostaria de))?)$/.test(overviewPrefix);
+      const details = intent.car_details.filter((detail): detail is SpecificCarDetail => detail !== "overview" && !(generalWording && detail === "other"));
+      if (wantsOverview) {
+        const previousReplies = car.id === priorCarId ? recentTurns.map(({ assistant }) => assistant) : [];
+        ({ message, speechText } = carOverview(car, previousReplies, details));
+      } else {
+        message = carFacts(car, details);
+        speechText = carSpeech(car, details);
+      }
     }
   }
   if (!message && budgetChanged) {
@@ -1078,7 +1118,8 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
     } else speechText = "Me conta um pouco do que tu procura que eu te ajudo a conferir o estoque.";
   }
   const canonical = introduction && greetingOnly ? "" : photoShared ? repeatMessage : socialReply(intent.social, photoMessage, greeting);
-  const text = stockKind || asksSlots || reactingCar ? canonicalReply(canonical, introduction) : await composeReply(key, incoming, canonical, introduction);
+  const text = stockKind || asksSlots || reactingCar || wantsOverview
+    ? canonicalReply(canonical, introduction) : await composeReply(key, incoming, canonical, introduction);
   const reply: TurnReply = {
     turnId: input.turnId, transcript, inputKind, ...speechNote(speechText, wantsAudio), ...text, visit, photo: gallery,
   };
