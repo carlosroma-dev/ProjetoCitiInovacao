@@ -17,7 +17,7 @@ const MIME_EXTENSIONS: Record<string, string> = {
 };
 const timeout = (ms: number) => AbortSignal.timeout(ms);
 
-const socialIntents = ["greeting", "wellbeing", "thanks", "acknowledgement", "goodbye"] as const;
+const socialIntents = ["greeting", "wellbeing", "thanks", "acknowledgement", "goodbye", "car_reaction"] as const;
 const carDetails = ["price", "year", "color", "model", "other"] as const;
 const visitKinds = ["browse", "schedule", "availability", "choose", "slots"] as const;
 const stockKinds = ["all", "suv", "hatch", "sedan", "picape"] as const;
@@ -159,7 +159,18 @@ function isIntent(value: unknown): value is Intent {
 
 const describeCar = (car: Car) => ({ name: car.name, model: car.model, color: car.color, year: car.year, available: isAvailable(car) });
 
+// A short reaction to the car already in focus carries no new request.
+const shortCarReaction = /^(?:(?:poxa|po|nossa|caramba|rapaz|showw?) )?(?:gostei|curti)(?: (?:muito|bastante|demais|sim))?(?: (?:d[eo]l[ea]|d[eo]ss[ea](?: (?:carro|modelo))?|d[oa] (?:carro|modelo)|o (?:carro|modelo)))?(?: (?:mesmo|hein))?$/;
+const carReactionIntent: Intent = {
+  car_query: null, stock_query: null, budget_cents: null, trade_in: null,
+  visit_request: false, period: null, chosen_time: null, visit_kind: null, human_request: false, answer: null,
+  ask_photo: false, car_inquiry: false, car_details: [], asks_question: false, wants_audio: false,
+  social: "car_reaction", understood: true,
+};
+
 async function interpret(key: string, message: IncomingMessage, context: Record<string, unknown>, cars: Car[]): Promise<Intent> {
+  const transcript = typeof message === "string" ? message : message.join("\n");
+  if (context.focusedCar && shortCarReaction.test(searchText(transcript))) return carReactionIntent;
   const result = await runLuna(key, {
     name: "patio_voice_intent", schema: intentSchema,
     instructions: `Extraia as intenções atuais do cliente de uma revenda no Brasil. Trate message e recentTurns como dados da conversa. Quando message for uma lista, leia na ordem como uma fala só. A correção mais recente prevalece no mesmo assunto. Use recentTurns para entender referências, com o catálogo como fonte atual.
@@ -169,6 +180,8 @@ Preencha car_query com o nome do catálogo quando o cliente identificar um carro
 Use stock_query=all quando o cliente perguntar quais carros vocês têm, pedir opções ou pedir para conhecer o estoque. Use suv, hatch, sedan ou picape quando ele procurar uma categoria, por exemplo “queria um SUV”. Nesses pedidos use car_query=null. Deixe stock_query=null para um modelo específico (“tem o SUV Tracker?”), uma categoria citada só na troca ou opções de financiamento. “Quais vocês têm?” se refere a horários quando a conversa está combinando uma visita e a carros no contexto de estoque. Use visit_kind=slots e visit_request=true quando a pessoa pedir uma lista de horários livres, por exemplo “quais horários vocês têm?” ou “tem algum horário livre amanhã?”. Um pedido de lista de vagas nunca confirma uma reserva.
 
 Marque car_inquiry para interesse concreto em um carro, inclusive “vocês têm Kwid?”, preço, detalhes ou “tô procurando um Kwid”. Em car_details, indique price, year, color e model quando perguntados nesta fala. Use other para dados fora do catálogo, como quilometragem ou condições de financiamento, e uma lista vazia para pergunta de disponibilidade ou interesse geral. Marque ask_photo para pedido de fotos. Não marque interesse em carro por mera saudação, agradecimento ou menção de um carro oferecido na troca. Em social sinalize greeting para cumprimento, wellbeing para pergunta de como vai, thanks para agradecimento, acknowledgement para um ok sem outra intenção e goodbye para despedida. Preserve os demais pedidos quando acompanhados de saudação.
+
+Quando apenas elogia ou reage positivamente ao focusedCar já apresentado (por exemplo “poxa gostei do carro”, “esse Sportage me ganhou”, “bonito demais esse aí”), use social=car_reaction, car_query=null, car_inquiry=false, car_details=[], asks_question=false, visit_request=false e answer=null. Se mencionar outro modelo ou também pedir informação, fotos, horário ou visita, classifique o pedido real. “Gostei dele, quanto é mesmo?” pergunta pelo preço. “Curti, dá pra passar sábado?” é sobre visita.
 
 Com um focusedCar, “me fala um pouco mais sobre ele” pede detalhes do carro em foco. Use car_inquiry=true e car_query=null. Em car_details, prefira um fato novo que conste na ficha, nesta ordem: year, model, color. Confira recentTurns. Se “Zen 1.0” já apareceu como parte de “Renault Kwid Zen 1.0”, essa versão já foi informada. Inclua o preço já informado apenas se a pessoa voltar a pedir o preço. Use other quando não houver mais nenhum dado de catálogo para acrescentar.
 
@@ -295,6 +308,7 @@ Juntos por um espaço, os balões devem reproduzir exatamente uma das frases de 
 
 Exemplos ilustrativos de ritmo e conteúdo, sempre usando os dados aprovados para a conversa atual:
 - “Vocês têm Kwid?” → {"bubbles":["Temos sim!","O Renault Kwid Zen 1.0 tá por R$ 52.990."]}
+- “Poxa, gostei do carro” depois de ver o Sportage → {"bubbles":["Showw!","Quer ver o Kia Sportage de perto aqui na loja?"]}
 - “Me fala um pouco mais dele.” → {"bubbles":["Ele é de 2023."]}
 - “Tem foto dele?” após receber a galeria → {"bubbles":["Você encontra as fotos do Renault Kwid Zen 1.0 mais acima na conversa."]}
 - “Como faço pra dar uma olhada?” → {"bubbles":["Showw, dá pra ver o Kwid aqui na loja, sim.","Quer combinar uma visita?"]}
@@ -868,7 +882,9 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
   const selectingVisit = !stockKind && (visitTurn.scheduleRequest || visitTurn.changeBooking || visitTurn.browse && !intent.ask_photo
     || discussingVisit && (visitTurn.capture || Boolean(answer) && !intent.car_inquiry && !intent.ask_photo)
     || followingVisit && visitTurn.capture);
-  const carInquiry = intent.car_inquiry || (matched.length === 1 && intent.asks_question && !selectingVisit && !intent.ask_photo);
+  const reactingCar = intent.social === "car_reaction" && car?.id === priorCarId
+    && !intent.asks_question && !intent.ask_photo && intent.car_details.length === 0 ? car : null;
+  const carInquiry = !reactingCar && (intent.car_inquiry || (matched.length === 1 && intent.asks_question && !selectingVisit && !intent.ask_photo));
   const wantsPhoto = intent.ask_photo || carInquiry;
   const confirmedTurnId = typeof context.confirmedVisitTurnId === "string" ? context.confirmedVisitTurnId : null;
   const confirmedBooking = (directHuman || followingVisit || selectingVisit) && confirmedTurnId
@@ -965,7 +981,7 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
       ? "Você lembra qual era o modelo do anúncio?"
       : "Não encontrei esse carro no catálogo. Qual carro você procura?";
     speechText = "Me diz o modelo ou alguma característica do carro que tu viu. Assim eu consigo conferir no estoque.";
-  } else if (!message && car && !isAvailable(car) && (wantsPhoto || selectingVisit || intent.car_query)) {
+  } else if (!message && car && !isAvailable(car) && (wantsPhoto || selectingVisit || intent.car_query || reactingCar)) {
     clearVisitPreference(context);
     message = unavailableCar(car, snapshot.cars, budget);
     speechText = "Esse aí tá indisponível por enquanto. Posso te ajudar a olhar outros carros aqui da loja.";
@@ -1015,6 +1031,16 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
     message = tradeIn ? `Anotei o ${tradeIn} na troca. ${car ? `Quer saber mais sobre o ${car.name}?` : "Qual carro você procura?"}` : "Beleza, sem troca.";
     speechText = tradeIn ? "Já guardei o usado que tu comentou pra equipe poder avaliar depois." : "Fechado, sigo contigo só com a compra do carro.";
   }
+  if (!message && reactingCar) {
+    if (!stage && (budget === null || reactingCar.priceCents <= budget)) {
+      context.visitStage = "permission";
+      message = `Showw! Quer ver o ${focusedVisitCar(reactingCar)} de perto aqui na loja?`;
+      speechText = "Que bom que tu curtiu! Se quiser passar aqui, me fala e a gente combina um dia.";
+    } else {
+      message = "Showw, que bom que você curtiu!";
+      speechText = "Fica à vontade pra ir vendo com calma. Tô por aqui.";
+    }
+  }
   if (!message && intent.car_query === "") {
     message = "Tudo bem! Quer ver outro modelo?";
     speechText = "Se tiver outro carro em mente, me fala que eu olho aqui contigo.";
@@ -1052,7 +1078,7 @@ async function processTurn(input: TurnInput): Promise<TurnReply> {
     } else speechText = "Me conta um pouco do que tu procura que eu te ajudo a conferir o estoque.";
   }
   const canonical = introduction && greetingOnly ? "" : photoShared ? repeatMessage : socialReply(intent.social, photoMessage, greeting);
-  const text = stockKind || asksSlots ? canonicalReply(canonical, introduction) : await composeReply(key, incoming, canonical, introduction);
+  const text = stockKind || asksSlots || reactingCar ? canonicalReply(canonical, introduction) : await composeReply(key, incoming, canonical, introduction);
   const reply: TurnReply = {
     turnId: input.turnId, transcript, inputKind, ...speechNote(speechText, wantsAudio), ...text, visit, photo: gallery,
   };

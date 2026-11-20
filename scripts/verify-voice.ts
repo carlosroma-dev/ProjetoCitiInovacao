@@ -503,7 +503,8 @@ async function main() {
 
     const stockChat = await createConversation(roundId);
     assert(stockChat);
-    await addCatalogCar(roundId, { name: "Kia Sportage", model: "EX", priceCents: 11_490_000, status: "available", imageUrls: [] });
+    const sportage = await addCatalogCar(roundId, { name: "Kia Sportage", model: "EX", priceCents: 11_490_000, status: "available", imageUrls: ["https://catalog.example.test/sportage.webp"] });
+    assert(sportage);
     await addCatalogCar(roundId, { name: "Chevrolet Tracker", model: "LTZ", priceCents: 12_490_000, status: "available", imageUrls: [] });
     await addCatalogCar(roundId, { name: "Tucson vendida", model: "GLS", priceCents: 8_490_000, status: "sold", imageUrls: [] });
     const stockIntent = { ...photoIntent, car_query: null, ask_photo: false, asks_question: true };
@@ -531,6 +532,36 @@ async function main() {
     const exactOption = await stockTurn("Quais vcs tem?");
     assert.match(exactOption.message, /08:00.*18:00/);
     assert.doesNotMatch(exactOption.message, /Sportage/, "the short question follows the visit context");
+
+    const reactionChat = await createConversation(roundId);
+    assert(reactionChat);
+    const reactTurn = (text: string) => handleTurn({ roundId, conversationId: reactionChat.id, turnId: sampledTurn(false), text });
+    intentResponses.push({ ...stockIntent, car_query: "Sportage", car_inquiry: true });
+    const sportageInquiry = await reactTurn("Vocês têm Sportage disponível?");
+    assert.match(sportageInquiry.message, /Sportage.*114\.900/);
+    assert.equal(sportageInquiry.photo?.id, sportage.id);
+    const beforeReaction = processingCalls;
+    const beforeReactionWriting = replyCalls;
+    const reaction = await reactTurn("poxa gostei do carro");
+    assert.equal(processingCalls, beforeReaction, "a short reaction to the focused car does not call the interpreter");
+    assert.equal(replyCalls, beforeReactionWriting, "the known reaction reply does not call the writer");
+    assert.match(reaction.message, /Showw! Quer ver o Kia Sportage de perto aqui na loja\?/);
+    assert.doesNotMatch(reaction.message, /Temos sim|114\.900|Sou a Júlia/);
+    assert.equal(reaction.photo, null);
+    assert.equal(reaction.visit, null);
+    verifyBubbles(reaction);
+    intentResponses.push({ ...stockIntent, asks_question: false, social: "car_reaction" });
+    const compliment = await reactTurn("bonito demais esse aí");
+    assert.match(compliment.message, /que bom que você curtiu/i);
+    assert.doesNotMatch(compliment.message, /114\.900|\?/, "a second reaction does not repeat the invitation");
+    intentResponses.push({ ...stockIntent, car_inquiry: true, car_details: ["price"] });
+    const priceAgain = await reactTurn("Gostei dele, quanto é mesmo?");
+    assert.match(priceAgain.message, /114\.900/, "an explicit follow-up still gets the price");
+    assert.equal(priceAgain.photo, null);
+    intentResponses.push({ ...stockIntent, asks_question: false, answer: "yes" });
+    const acceptsVisit = await reactTurn("Quero sim");
+    assert.match(acceptsVisit.message, /Qual dia e horário/);
+    assert.equal(acceptsVisit.visit, null, "accepting the invitation still requires a preferred time");
 
     const visitConversation = await createConversation(roundId);
     const urgentConversation = await createConversation(roundId);
